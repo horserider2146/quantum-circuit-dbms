@@ -1,0 +1,11 @@
+# Database (too large for GitHub)
+db/quantum_circuits.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Streamlit cache
+.streamlit/
