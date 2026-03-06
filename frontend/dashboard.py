@@ -7,6 +7,7 @@ Interactive dashboard with search, filters, stats & CRUD UI.
 import streamlit as st
 import sqlite3
 import pandas as pd
+import numpy as np
 import json
 import os
 from datetime import datetime
@@ -55,7 +56,9 @@ st.sidebar.divider()
 
 page = st.sidebar.radio(
     "Navigate",
-    ["🏠 Dashboard", "🔍 Search & Explore", "➕ Add Circuit", "✏️ Edit / Delete", "📊 Compare Circuits", "📖 Lessons & Guide"],
+    ["🏠 Dashboard", "🔍 Search & Explore", "➕ Add Circuit",
+     "✏️ Edit / Delete", "📊 Compare Circuits",
+     "🧬 DNA Fingerprinting", "📖 Lessons & Guide"],
     label_visibility="collapsed"
 )
 
@@ -844,3 +847,284 @@ elif page == "📊 Compare Circuits":
 
             for v in verdicts:
                 st.markdown(v)
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE — 🧬 CIRCUIT DNA FINGERPRINTING
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🧬 DNA Fingerprinting":
+    st.title("🧬 Quantum Circuit DNA Fingerprinting")
+    st.caption("Every circuit has a unique genetic fingerprint built from 20 parameters across all 5 tables. Find circuits that are quantum twins — same DNA, different identity.")
+
+    # ── How it works expander ──────────────────────────────────────────────────
+    with st.expander("🔬 How does DNA Fingerprinting work?"):
+        st.markdown("""
+        Each circuit is converted into a **20-dimensional fingerprint vector** using:
+
+        | Gene Group | Parameters |
+        |------------|-----------|
+        | 🔩 Gate DNA | two_qubit_gate_ratio, gate_depth_ratio, gate_cancellation_ratio, clifford ratio, circuit_depth |
+        | 🔬 Qubit DNA | t1_relaxation_us, t2_decoherence_us, qubit_frequency_ghz, readout_error, crosstalk_coefficient |
+        | 🌊 Noise DNA | single_qubit_error_rate, two_qubit_error_rate, total_circuit_error, amplitude_damping_rate, spam_error_rate |
+        | ⚡ Performance DNA | circuit_fidelity, success_rate, leakage_rate, transpiled_depth, cnot_count |
+
+        All values are **normalized** so no single parameter dominates.
+        Similarity is measured using **cosine similarity** — two circuits with score > 0.99 are quantum twins.
+        """)
+
+    st.divider()
+
+    # ── Load data ──────────────────────────────────────────────────────────────
+    @st.cache_data(ttl=300)
+    def load_dna_data(sample_size=2000):
+        df = query(f"""
+            SELECT c.circuit_id, c.algorithm, c.backend, c.category,
+                   c.circuit_fidelity, c.success_rate,
+                   g.two_qubit_gate_ratio, g.gate_depth_ratio, g.gate_cancellation_ratio,
+                   g.circuit_depth, g.cnot_count, g.transpiled_depth,
+                   CAST(g.clifford_gates AS FLOAT) / NULLIF(g.total_gate_count, 0) as clifford_ratio,
+                   q.t1_relaxation_us, q.t2_decoherence_us, q.qubit_frequency_ghz,
+                   q.readout_error, q.crosstalk_coefficient, q.leakage_rate,
+                   n.single_qubit_error_rate, n.two_qubit_error_rate,
+                   n.total_circuit_error, n.amplitude_damping_rate, n.spam_error_rate
+            FROM circuits c
+            JOIN gates g ON c.circuit_id = g.circuit_id
+            JOIN qubits q ON c.circuit_id = q.circuit_id
+            JOIN noise_models n ON c.circuit_id = n.circuit_id
+            LIMIT {sample_size}
+        """)
+        return df
+
+    FEATURE_COLS = [
+        "two_qubit_gate_ratio", "gate_depth_ratio", "gate_cancellation_ratio",
+        "clifford_ratio", "circuit_depth",
+        "t1_relaxation_us", "t2_decoherence_us", "qubit_frequency_ghz",
+        "readout_error", "crosstalk_coefficient",
+        "single_qubit_error_rate", "two_qubit_error_rate",
+        "total_circuit_error", "amplitude_damping_rate", "spam_error_rate",
+        "circuit_fidelity", "success_rate", "leakage_rate",
+        "transpiled_depth", "cnot_count"
+    ]
+
+    sample_size = st.slider("Sample size (more = slower but richer)", 500, 3000, 1000, 500)
+    df = load_dna_data(sample_size)
+
+    # Normalize the feature matrix
+    features = df[FEATURE_COLS].fillna(0).values.astype(float)
+    col_min = features.min(axis=0)
+    col_max = features.max(axis=0)
+    col_range = col_max - col_min
+    col_range[col_range == 0] = 1
+    features_norm = (features - col_min) / col_range
+
+    # ── SECTION 1: Single Circuit DNA ─────────────────────────────────────────
+    st.subheader("🔬 View a Circuit's DNA Fingerprint")
+    dna_id = st.text_input("Enter a Circuit ID", placeholder="CIR-00001", key="dna_input")
+
+    if dna_id:
+        match = df[df["circuit_id"] == dna_id]
+        if match.empty:
+            st.error(f"Circuit '{dna_id}' not found in current sample. Try increasing sample size or check the ID.")
+        else:
+            idx = match.index[0]
+            row = match.iloc[0]
+            fingerprint = features_norm[df.index.get_loc(idx)]
+
+            st.success(f"**{dna_id}** | Algorithm: `{row['algorithm']}` | Backend: `{row['backend']}` | Fidelity: `{row['circuit_fidelity']:.4f}`")
+
+            # Radar-style bar chart of the DNA
+            dna_df = pd.DataFrame({
+                "Gene": FEATURE_COLS,
+                "Value": fingerprint,
+                "Group": (
+                    ["🔩 Gate"] * 5 +
+                    ["🔬 Qubit"] * 5 +
+                    ["🌊 Noise"] * 5 +
+                    ["⚡ Performance"] * 5
+                )
+            })
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**Full DNA Strand**")
+                dna_chart = dna_df.set_index("Gene")["Value"]
+                st.bar_chart(dna_chart)
+
+            with col2:
+                st.markdown("**DNA by Gene Group**")
+                group_avg = dna_df.groupby("Group")["Value"].mean()
+                st.bar_chart(group_avg)
+
+            # Gene breakdown table
+            st.markdown("**Raw Gene Values**")
+            display_df = pd.DataFrame({
+                "Gene": FEATURE_COLS,
+                "Group": dna_df["Group"],
+                "Normalized (0-1)": [f"{v:.4f}" for v in fingerprint],
+                "Raw Value": [f"{match.iloc[0][c]:.6f}" if isinstance(match.iloc[0][c], float) else str(match.iloc[0][c]) for c in FEATURE_COLS]
+            })
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ── SECTION 2: Find Quantum Twins ─────────────────────────────────────────
+    st.subheader("👯 Find Quantum Twins (Most Similar Circuits)")
+    st.caption("Find circuits with the most similar DNA fingerprint — regardless of algorithm or backend.")
+
+    twin_id = st.text_input("Enter Circuit ID to find its twins", placeholder="CIR-00001", key="twin_input")
+    top_n = st.slider("Number of twins to find", 3, 20, 8)
+
+    if twin_id:
+        match = df[df["circuit_id"] == twin_id]
+        if match.empty:
+            st.error(f"Circuit '{twin_id}' not found in current sample.")
+        else:
+            idx = df.index.get_loc(match.index[0])
+            query_vec = features_norm[idx]
+
+            # Cosine similarity
+            norms = np.linalg.norm(features_norm, axis=1, keepdims=True)
+            norms[norms == 0] = 1
+            normed = features_norm / norms
+            query_norm = query_vec / (np.linalg.norm(query_vec) or 1)
+            similarities = normed @ query_norm
+
+            sim_df = df[["circuit_id", "algorithm", "backend", "category",
+                          "circuit_fidelity", "success_rate"]].copy()
+            sim_df["dna_similarity"] = similarities
+            sim_df = sim_df[sim_df["circuit_id"] != twin_id]
+            sim_df = sim_df.sort_values("dna_similarity", ascending=False).head(top_n)
+            sim_df["dna_similarity"] = sim_df["dna_similarity"].apply(lambda x: f"{x:.6f}")
+
+            target = match.iloc[0]
+            st.info(f"**{twin_id}** → Algorithm: `{target['algorithm']}` | Backend: `{target['backend']}`")
+
+            # Highlight twins with different algorithm (the interesting ones)
+            st.markdown("**Top DNA Twins** — 🟡 highlights circuits with a *different* algorithm (cross-algorithm twins)")
+
+            def highlight_cross_algo(row):
+                algo = row["algorithm"]
+                color = "#2d5a27" if algo != target["algorithm"] else ""
+                return [f"background-color: {color}"] * len(row)
+
+            st.dataframe(
+                sim_df.style.apply(highlight_cross_algo, axis=1),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # Summary stats
+            result_df = sim_df.copy()
+            result_df["dna_similarity"] = result_df["dna_similarity"].astype(float)
+            same_algo = (result_df["algorithm"] == target["algorithm"]).sum()
+            diff_algo = (result_df["algorithm"] != target["algorithm"]).sum()
+            same_backend = (result_df["backend"] == target["backend"]).sum()
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Same Algorithm Twins", same_algo)
+            m2.metric("Cross-Algorithm Twins 🟡", diff_algo)
+            m3.metric("Same Backend Twins", same_backend)
+
+    st.divider()
+
+    # ── SECTION 3: Anomaly Detector ───────────────────────────────────────────
+    st.subheader("🕵️ Quantum Anomalies — Circuits That Defy Their DNA")
+    st.caption("Circuits whose performance is wildly different from what their hardware & gate DNA predicts.")
+
+    if st.button("🔍 Find Anomalies", use_container_width=True):
+        # Predict fidelity from non-performance features (first 15 genes)
+        X = features_norm[:, :15]   # Gate + Qubit + Noise DNA only
+        y = features_norm[:, 15]    # circuit_fidelity (normalized)
+
+        # Simple linear prediction using dot product weights
+        # Use correlation of each feature with fidelity as weight
+        correlations = np.array([np.corrcoef(X[:, i], y)[0, 1] for i in range(X.shape[1])])
+        correlations = np.nan_to_num(correlations)
+        weights = correlations / (np.sum(np.abs(correlations)) or 1)
+        predicted = X @ weights
+
+        # Normalize predicted to 0-1
+        pred_min, pred_max = predicted.min(), predicted.max()
+        if pred_max > pred_min:
+            predicted_norm = (predicted - pred_min) / (pred_max - pred_min)
+        else:
+            predicted_norm = predicted
+
+        actual_norm = features_norm[:, 15]
+        residual = actual_norm - predicted_norm  # positive = overperformer, negative = underperformer
+
+        anomaly_df = df[["circuit_id", "algorithm", "backend", "circuit_fidelity", "success_rate"]].copy()
+        anomaly_df["predicted_fidelity_score"] = predicted_norm
+        anomaly_df["actual_fidelity_score"] = actual_norm
+        anomaly_df["anomaly_score"] = residual
+
+        overperformers = anomaly_df.nlargest(8, "anomaly_score")
+        underperformers = anomaly_df.nsmallest(8, "anomaly_score")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("### 🚀 Overperformers")
+            st.caption("High fidelity despite bad hardware/noise DNA")
+            op = overperformers[["circuit_id", "algorithm", "backend",
+                                  "circuit_fidelity", "anomaly_score"]].copy()
+            op["anomaly_score"] = op["anomaly_score"].apply(lambda x: f"+{x:.4f}")
+            st.dataframe(op, use_container_width=True, hide_index=True)
+
+        with col2:
+            st.markdown("### 💀 Underperformers")
+            st.caption("Low fidelity despite good hardware/noise DNA")
+            up = underperformers[["circuit_id", "algorithm", "backend",
+                                   "circuit_fidelity", "anomaly_score"]].copy()
+            up["anomaly_score"] = up["anomaly_score"].apply(lambda x: f"{x:.4f}")
+            st.dataframe(up, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ── SECTION 4: Algorithm DNA Clusters ─────────────────────────────────────
+    st.subheader("🗺️ Algorithm DNA Similarity Map")
+    st.caption("Which algorithms share the most similar average DNA fingerprint?")
+
+    if st.button("🧬 Generate Similarity Map", use_container_width=True):
+        algo_groups = df.groupby("algorithm")
+        algo_names = []
+        algo_vecs = []
+
+        for algo, group in algo_groups:
+            if len(group) >= 3:
+                idxs = [df.index.get_loc(i) for i in group.index if i < len(features_norm)]
+                vecs = features_norm[idxs]
+                algo_vecs.append(vecs.mean(axis=0))
+                algo_names.append(algo)
+
+        algo_matrix = np.array(algo_vecs)
+        norms = np.linalg.norm(algo_matrix, axis=1, keepdims=True)
+        norms[norms == 0] = 1
+        algo_normed = algo_matrix / norms
+        sim_matrix = algo_normed @ algo_normed.T
+
+        sim_display = pd.DataFrame(sim_matrix, index=algo_names, columns=algo_names)
+
+        st.markdown("**Algorithm DNA Similarity Matrix** (1.0 = identical DNA)")
+        st.dataframe(
+            sim_display.style.background_gradient(cmap="YlOrRd", vmin=0.5, vmax=1.0)
+                             .format("{:.3f}"),
+            use_container_width=True
+        )
+
+        # Find most and least similar pairs
+        pairs = []
+        for i in range(len(algo_names)):
+            for j in range(i+1, len(algo_names)):
+                pairs.append((algo_names[i], algo_names[j], sim_matrix[i][j]))
+
+        pairs_df = pd.DataFrame(pairs, columns=["Algorithm A", "Algorithm B", "DNA Similarity"])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**🧬 Most Similar Algorithm Pairs**")
+            top_pairs = pairs_df.nlargest(5, "DNA Similarity")
+            top_pairs["DNA Similarity"] = top_pairs["DNA Similarity"].apply(lambda x: f"{x:.4f}")
+            st.dataframe(top_pairs, use_container_width=True, hide_index=True)
+        with col2:
+            st.markdown("**🔀 Most Different Algorithm Pairs**")
+            bot_pairs = pairs_df.nsmallest(5, "DNA Similarity")
+            bot_pairs["DNA Similarity"] = bot_pairs["DNA Similarity"].apply(lambda x: f"{x:.4f}")
+            st.dataframe(bot_pairs, use_container_width=True, hide_index=True)
