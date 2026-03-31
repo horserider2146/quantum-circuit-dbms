@@ -1,255 +1,353 @@
-# Quantum Circuit DBMS (Course-Ready)
+# ⚛️ Quantum Circuit DBMS
 
-This repository contains a full DBMS project built on quantum circuit experiment data with:
+A full-stack **Database Management System** built on **15,000 IBM Quantum circuit experiments**, featuring a relational SQLite database, a FastAPI REST backend, and an interactive Streamlit dashboard with search, CRUD operations, circuit comparison, and built-in lessons.
 
-- Relational SQLite database across multiple connected tables
-- FastAPI backend with authenticated CRUD, search, metadata, and analytics endpoints
-- Streamlit dashboard that consumes FastAPI endpoints
-- Database setup script and reusable SQL query samples
+---
 
-## Feature highlights
+## 📌 Table of Contents
 
-### DBMS-focused features
+- [Project Overview](#-project-overview)
+- [Tech Stack](#-tech-stack)
+- [File Structure](#-file-structure)
+- [Database Schema](#-database-schema)
+- [Setup & Installation](#-setup--installation)
+- [Running the Project](#-running-the-project)
+- [API Endpoints](#-api-endpoints)
+- [Dashboard Pages](#-dashboard-pages)
+- [Example API Usage](#-example-api-usage)
+- [Pushing to GitHub](#-pushing-to-github)
+- [Lessons Covered](#-lessons-covered)
 
-- Audit logs for create/update/delete events (`/audit/logs`)
-- Bulk circuit upload with conflict handling (`/bulk/circuits`)
-- Saved filter presets and reusable filtered result views (`/filters`, `/filters/{filter_id}/circuits`)
-- Date-range aware filtering in both ad-hoc and saved filters (`experiment_date_start`, `experiment_date_end`)
-- Soft delete with restore support (`DELETE /circuits/{circuit_id}`, `POST /circuits/{circuit_id}/restore`)
-- Hard delete fallback when permanent removal is needed (`DELETE /circuits/{circuit_id}/hard`)
-- Data quality report for orphan rows, out-of-range metrics, and null-heavy columns (`/quality/report`)
-- Benchmark comparison endpoint for algorithm-level analysis (`/benchmark/compare`)
+---
 
-### Quantum-focused features
+## 📖 Project Overview
 
-- Noise-aware circuit scoring endpoint for practical ranking (`/quantum/noise-aware-score`)
-- Mitigation effectiveness analytics by backend and algorithm (`/quantum/mitigation/effectiveness`)
-- Hardware recommendation endpoint based on similar workload profiles (`/quantum/hardware/recommend`)
-- Quantum What-If Lab for counterfactual scenario prediction and recommendations (`/quantum/what-if`, `/quantum/what-if/recommendations`)
+This project demonstrates a complete DBMS pipeline using real-world quantum computing data:
 
-## 1) Why this database choice
+- **15,000 IBM Quantum circuit experiments** loaded from Excel into a relational SQLite database
+- **5 normalized tables** linked by a `circuit_id` primary key
+- **FastAPI backend** exposing 18+ REST endpoints for full CRUD, search, and analytics
+- **Streamlit dashboard** with 6 interactive pages including a search engine and circuit comparison tool
+- **Step-by-step lessons** and a live SQL playground built directly into the dashboard
 
-The workload is mostly analytical (read-heavy aggregations, trend analysis, and comparisons), with moderate CRUD for demonstrations.
+---
 
-- SQLite is simple to distribute and run locally for a course project
-- It supports relational modeling with joins and indexes
-- It is sufficient for a few-thousand to 15,000+ row classroom workload
-- Indexes are added for key query paths (algorithm, backend, circuit_id, date, fidelity)
+## 🛠️ Tech Stack
 
-## 2) Project structure
+| Layer | Technology |
+|-------|-----------|
+| Database | SQLite 3 |
+| Backend API | FastAPI + Pydantic |
+| Frontend | Streamlit |
+| Data Processing | pandas + openpyxl |
+| ASGI Server | Uvicorn |
+| Language | Python 3.10+ |
 
-```text
-quantum-circuit-dbms/
+---
+
+## 📁 File Structure
+
+```
+quantum_dbms/
 ├── backend/
-│   ├── main.py
-│   └── models.py
+│   ├── main.py            ← FastAPI routes & all endpoints
+│   └── models.py          ← Pydantic request/response schemas
 ├── frontend/
-│   ├── dashboard.py
-│   └── dashboard_api.py
-├── scripts/
-│   ├── load_excel_to_sqlite.py
-│   ├── generate_synthetic_db.py
-│   └── validate_project_requirements.py
-├── sql/
-│   └── sample_queries.sql
+│   ├── dashboard.py       ← Original Streamlit dashboard (direct DB)
+│   └── dashboard_api.py   ← API-driven dashboard for course requirements
+├── db/
+│   └── quantum_circuits.db  ← SQLite database (auto-generated)
 ├── docs/
-│   ├── README.md
-│   ├── ER_DIAGRAM.md
-│   ├── API_DOCUMENTATION.md
-│   ├── REPORT_TEMPLATE.md
-│   ├── LIVE_DEMO_SCRIPT.md
-│   ├── PROJECT_REQUIREMENTS_TRACEABILITY.md
-│   └── postman_collection.json
-├── .env.example
-└── requirements.txt
+│   └── README.md          ← This file
+└── requirements.txt       ← Python dependencies
 ```
 
-## 3) Setup
+---
 
-### Install dependencies
+## 🗄️ Database Schema
 
+All 5 tables are linked via `circuit_id` as the primary key.
+
+### `circuits` — Main table (21 columns)
+| Column | Type | Description |
+|--------|------|-------------|
+| circuit_id | TEXT | Unique identifier e.g. CIR-00001 |
+| job_id | TEXT | IBM Quantum job ID |
+| circuit_name | TEXT | Human-readable name |
+| algorithm | TEXT | QFT, VQE, QAOA, Grover, etc. |
+| category | TEXT | Circuit category |
+| backend | TEXT | ibm_seattle, ibm_kolkata, etc. |
+| architecture | TEXT | Hardware architecture |
+| quantum_volume | INTEGER | IBM Quantum Volume metric |
+| experiment_date | TEXT | ISO date of experiment |
+| qiskit_version | TEXT | Qiskit SDK version used |
+| is_simulator | TEXT | True / False |
+| optimization_level | INTEGER | Transpiler optimization (0–3) |
+| shots | INTEGER | Number of measurement shots |
+| circuit_fidelity | REAL | Quality score (0.0 – 1.0) |
+| success_rate | REAL | Success rate (0.0 – 1.0) |
+
+### `qubits` — Hardware parameters (20 columns)
+Qubit frequencies (GHz), T1 relaxation (µs), T2 decoherence (µs), readout errors, coupling strengths (MHz), crosstalk, leakage rates, and calibration dates.
+
+### `gates` — Circuit composition (23 columns)
+Total gate count, circuit depth, CNOT count, H/RZ/X/T gate counts, two-qubit gate ratio, Clifford vs non-Clifford gates, transpiled depth, and gate cancellation ratio.
+
+### `results` — Execution outcomes (22 columns)
+Success rate, Hellinger fidelity, TVD, KL divergence, cross entropy, expected vs measured values, mitigation overhead, memory usage, and retry counts.
+
+### `noise_models` — Error profiles (23 columns)
+Depolarizing probabilities (1Q/2Q), amplitude/phase damping rates, SPAM errors, crosstalk error, coherent error rate, gate errors (CX, U3), and total circuit error.
+
+---
+
+## ⚙️ Setup & Installation
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/YOUR_USERNAME/quantum-circuit-dbms.git
+cd quantum-circuit-dbms
+```
+
+### 2. Install dependencies
 ```powershell
 pip install -r requirements.txt
 ```
 
-### Configure environment
+> If pandas fails to install on Windows, run this first:
+> ```powershell
+> pip install pandas --prefer-binary
+> ```
 
-Create a local `.env` file (or set environment variables) using `.env.example` as a reference:
-
-```text
-API_KEY=dev-api-key
-API_BASE_URL=http://localhost:8000
-```
-
-### Build database from Excel
+### 3. Generate the database
+Place your `quantum_circuit_database.xlsx` file somewhere accessible, then run:
 
 ```powershell
-python scripts/load_excel_to_sqlite.py --excel C:/path/to/quantum_circuit_database.xlsx --db db/quantum_circuits.db
+python -c "
+import pandas as pd, sqlite3
+xl = pd.read_excel('C:/path/to/quantum_circuit_database.xlsx', sheet_name=None)
+conn = sqlite3.connect('db/quantum_circuits.db')
+for sheet, table in [('Circuits','circuits'),('Qubits','qubits'),('Gates','gates'),('Results','results'),('Noise_Models','noise_models')]:
+    df = xl[sheet].copy()
+    df.columns = [c.strip().lower().replace(' ','_') for c in df.columns]
+    df.to_sql(table, conn, if_exists='replace', index=False)
+    print(f'Loaded {table}')
+conn.close()
+print('Done!')
+"
 ```
 
-### Optional fallback: generate synthetic dataset
-
-If the original Excel file is not available yet, generate a fully relational local DB with thousands of rows:
-
-```powershell
-python scripts/generate_synthetic_db.py --db db/quantum_circuits.db --rows 5000
+You should see:
+```
+Loaded circuits
+Loaded qubits
+Loaded gates
+Loaded results
+Loaded noise_models
+Done!
 ```
 
-## 4) Run the application
+---
 
-### Terminal 1: FastAPI backend
+## 🚀 Running the Project
 
+Open **two separate terminals** inside the `quantum_dbms/` folder.
+
+### Terminal 1 — Start the FastAPI backend
 ```powershell
-$env:API_KEY="dev-api-key"
+set API_KEY=dev-api-key
 python -m uvicorn backend.main:app --reload --port 8000
 ```
 
-### Terminal 2: Streamlit frontend (API-driven)
-
+### Terminal 2 — Start the Streamlit dashboard
 ```powershell
-$env:API_KEY="dev-api-key"
-$env:API_BASE_URL="http://localhost:8000"
+set API_KEY=dev-api-key
+set API_BASE_URL=http://localhost:8000
 python -m streamlit run frontend/dashboard_api.py
 ```
 
-Open:
+`frontend/dashboard_api.py` is the API-first dashboard used for course requirement compliance (authenticated calls to FastAPI endpoints).
 
-- Dashboard: http://localhost:8501
-- Swagger docs: http://localhost:8000/docs
+### Access the app
+| What | URL |
+|------|-----|
+| 📊 Dashboard | http://localhost:8501 |
+| 📚 API Docs (Swagger) | http://localhost:8000/docs |
+| 📖 API ReDoc | http://localhost:8000/redoc |
+| ❤️ Health Check | http://localhost:8000/health |
 
-In Swagger, click **Authorize** and provide your API key in `X-API-Key`.
+---
 
-## 5) API authentication
+## 🌐 API Endpoints
 
-All endpoints are protected by an API key header:
+### Circuits
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/circuits` | List circuits (paginated + filtered) |
+| GET | `/circuits/{id}` | Full detail across all 5 tables |
+| POST | `/circuits` | Create a new circuit |
+| PATCH | `/circuits/{id}` | Update specific fields |
+| DELETE | `/circuits/{id}` | Soft delete circuit (recoverable) |
+| POST | `/circuits/{id}/restore` | Restore a soft-deleted circuit |
+| DELETE | `/circuits/{id}/hard` | Permanent delete + related records |
 
-- Header name: `X-API-Key`
-- Value: value from `API_KEY` environment variable
+### Search & Stats
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/search?q=QFT` | Full-text search across 5 fields |
+| GET | `/stats` | Aggregated dashboard statistics |
+| GET | `/stats/top-performers` | Top circuits ranked by fidelity |
 
-If the header is missing or invalid, endpoints return `401`.
+### Metadata
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/meta/algorithms` | All distinct algorithm names |
+| GET | `/meta/backends` | All distinct backend names |
+| GET | `/meta/categories` | All distinct categories |
 
-## 6) Core endpoints
+### Related Tables
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| PATCH | `/qubits/{id}` | Update qubit parameters |
+| PATCH | `/noise/{id}` | Update noise model values |
 
-### CRUD
+### DBMS Enhancements
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/bulk/circuits` | Bulk insert/update with conflict handling |
+| POST | `/filters` | Save filter preset |
+| GET | `/filters` | List saved filters |
+| GET | `/filters/{filter_id}/circuits` | Run saved filter |
+| GET | `/audit/logs` | Audit trail events |
+| GET | `/quality/report` | Data-quality checks |
+| GET | `/benchmark/compare` | Algorithm benchmark comparison |
 
-- `GET /circuits`
-- `GET /circuits/{circuit_id}`
-- `POST /circuits`
-- `PATCH /circuits/{circuit_id}`
-- `DELETE /circuits/{circuit_id}` (soft delete)
-- `POST /circuits/{circuit_id}/restore`
-- `DELETE /circuits/{circuit_id}/hard`
+### Quantum Extensions
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/quantum/noise-aware-score` | Composite quality ranking |
+| GET | `/quantum/mitigation/effectiveness` | Mitigation analytics |
+| POST | `/quantum/hardware/recommend` | Backend recommendation |
 
-### DBMS enhancements
+### Filter Parameters for `GET /circuits`
+| Parameter | Type | Example |
+|-----------|------|---------|
+| `algorithm` | string (partial match) | `?algorithm=QFT` |
+| `backend` | string (partial match) | `?backend=ibm_seattle` |
+| `category` | string (partial match) | `?category=variational` |
+| `min_fidelity` | float | `?min_fidelity=0.9` |
+| `max_fidelity` | float | `?max_fidelity=1.0` |
+| `is_simulator` | string | `?is_simulator=False` |
+| `page` | int | `?page=2` |
+| `limit` | int | `?limit=50` |
 
-- `POST /bulk/circuits`
-- `POST /filters`
-- `GET /filters`
-- `GET /filters/{filter_id}/circuits`
-- `GET /audit/logs`
-- `GET /quality/report`
-- `GET /benchmark/compare`
+---
 
-### Quantum analytics extensions
+## 📊 Dashboard Pages
 
-- `GET /quantum/noise-aware-score`
-- `GET /quantum/mitigation/effectiveness`
-- `POST /quantum/hardware/recommend`
-- `POST /quantum/what-if`
-- `POST /quantum/what-if/recommendations`
+| Page | Features |
+|------|----------|
+| 🏠 Overview | KPI metrics, algorithm/backends charts, fidelity distribution, top performers |
+| 🔍 Search & Filter | Full-text search and advanced filtering via API |
+| ✏️ CRUD | Create, update, soft delete records through API forms |
+| 📊 Compare | Side-by-side circuit comparison with verdict and metric tables |
+| 🧪 Qubit Builder | Build, preview, save, list, view, and delete custom circuits |
 
-### Frontend query endpoints (used by dashboard)
+---
 
-- `GET /stats`
-- `GET /stats/top-performers`
-- `GET /search`
-- `GET /meta/algorithms`
-- `GET /meta/backends`
-- `GET /meta/categories`
+## 💻 Example API Usage
 
-### Extra endpoints: custom circuit builder
+```python
+import requests
 
-- `POST /builder/preview`
-- `POST /builder/save`
-- `GET /builder/circuits`
-- `GET /builder/circuits/{user_circuit_id}`
-- `DELETE /builder/circuits/{user_circuit_id}`
+BASE = "http://localhost:8000"
 
-## 7) Dashboard requirements coverage
+# Required auth header
+headers = {"X-API-Key": "dev-api-key"}
 
-`frontend/dashboard_api.py` includes:
+# Search for Grover circuits
+r = requests.get(f"{BASE}/search", params={"q": "Grover"}, headers=headers)
+print(r.json()["count"], "results found")
 
-- 3+ visualizations:
-  - KPI cards (total circuits, avg fidelity, avg success)
-  - Top algorithm bar chart
-  - Top backend bar chart
-  - Fidelity distribution chart
-  - Top performers table
-- Interactive API calls:
-  - Search input -> `/search`
-  - Filter controls -> `/circuits` with dynamic params including date windows
-  - Save/load reusable filter presets via `/filters` endpoints
-- CRUD demo via API:
-  - Create, Update, Delete tabs calling POST/PATCH/DELETE endpoints
-- Circuit Comparison:
-  - Side-by-side metrics and table comparison for two circuit IDs
-  - Gate and noise profile comparison with auto verdict
-- Qubit Builder:
-  - Build circuits by adding gate steps (single, controlled, and parameterized gates)
-  - Preview circuit layout before saving
-  - Save, list, view, and delete custom builder circuits through API endpoints
-- Quantum What-If Lab:
-  - Predict expected fidelity and success rate for user-defined scenario changes
-  - Show top recommended backend/mitigation/optimization actions with estimated deltas
-- Data Quality Dashboard:
-  - Visual summary for orphan rows and out-of-range metrics
-  - Null-heavy column detection and per-table null profile view
-- Refresh logic:
-  - Manual refresh button for slower-changing data
-  - Optional auto polling (10/15/30 sec) using `streamlit-autorefresh`
+# Get high-fidelity real hardware circuits
+r = requests.get(f"{BASE}/circuits", params={
+    "min_fidelity": 0.95,
+    "is_simulator": "False",
+    "limit": 10
+}, headers=headers)
+for c in r.json()["data"]:
+    print(c["circuit_id"], c["backend"], c["circuit_fidelity"])
 
-## 8) SQL commands used
+# Get full detail for one circuit (all 5 tables)
+r = requests.get(f"{BASE}/circuits/CIR-00001", headers=headers)
+data = r.json()
+print(data["circuit"]["algorithm"])
+print(data["qubits"]["t1_relaxation_us"])
+print(data["noise_model"]["total_circuit_error"])
 
-See `sql/sample_queries.sql` for:
+# Update a circuit
+r = requests.patch(f"{BASE}/circuits/CIR-00001", json={
+    "circuit_fidelity": 0.97,
+    "mitigation_technique": "TREX"
+}, headers=headers)
+print(r.json())
 
-- Aggregation and trend queries
-- Multi-table join examples
-- Insert / update / delete examples
+# Soft delete a circuit (recoverable)
+r = requests.delete(f"{BASE}/circuits/CIR-99999", headers=headers)
+print(r.json())
 
-## 9) What to include in the final report
+# Restore soft-deleted circuit
+r = requests.post(f"{BASE}/circuits/CIR-99999/restore", headers=headers)
+print(r.json())
 
-Use this repository evidence for the course PDF:
-
-- Problem statement and dataset story
-- ER diagram and relational design decisions
-- API endpoint documentation and CRUD mapping
-- Dashboard visualization intent and refresh strategy
-- SQL commands actually used
-- Challenges and learnings
-
-The repository already contains the code artifacts; your report should explain the decisions and outcomes.
-
-## 10) Submission support assets
-
-- ER diagram: `docs/ER_DIAGRAM.md`
-- Endpoint catalog and sample payloads: `docs/API_DOCUMENTATION.md`
-- 10-12 page report structure: `docs/REPORT_TEMPLATE.md`
-- prefilled report draft: `docs/REPORT_DRAFT.md`
-- 10-minute demo flow: `docs/LIVE_DEMO_SCRIPT.md`
-- Guideline-to-evidence checklist: `docs/PROJECT_REQUIREMENTS_TRACEABILITY.md`
-- Postman collection for CRUD and analytics demo: `docs/postman_collection.json`
-
-## 11) Readiness validation
-
-Run a single command to verify key requirements coverage and minimum DB row counts:
-
-```powershell
-python scripts/validate_project_requirements.py --db db/quantum_circuits.db --min-rows 3000
+# Get dashboard stats
+r = requests.get(f"{BASE}/stats", headers=headers)
+stats = r.json()
+print(f"Total: {stats['total_circuits']:,} circuits")
+print(f"Avg Fidelity: {stats['avg_fidelity']:.2%}")
 ```
 
-This validates:
+---
 
-- required repository files for submission
-- required OpenAPI endpoints
-- API key security presence
-- required DB tables and minimum row counts
+## 🐙 Pushing to GitHub
+
+```powershell
+# Initialize git inside quantum_dbms/
+git init
+git add .
+git commit -m "Initial commit - Quantum Circuit DBMS"
+
+# Link to your GitHub repo
+git remote add origin https://github.com/YOUR_USERNAME/quantum-circuit-dbms.git
+git branch -M main
+git push -u origin main
+```
+
+> The `.db` database file is excluded via `.gitignore` because of its size.
+> Anyone cloning the repo should follow the **Generate the database** step above.
+
+---
+
+## 🎓 Notes
+
+The API-driven dashboard focuses on course requirements and includes direct operational workflows:
+
+- analytics overview
+- search and filter interactions
+- CRUD operations
+- side-by-side circuit comparison
+- custom circuit builder
+
+---
+
+## 👤 Author
+
+**Ritarshi Roy, Advika Nagool, Hiya Udeshi, Madhav Sahi **  
+Quantum Circuit DBMS — College DBMS Project  
+
+---
+
+## 📄 License
+
+This project is for educational purposes.  
+Quantum circuit data sourced from IBM Quantum experiments.
