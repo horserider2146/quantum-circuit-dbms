@@ -1,0 +1,178 @@
+{
+  "info": {
+    "name": "Quantum Circuit DBMS API",
+    "_postman_id": "0c2f2b84-1c8a-49f4-9b99-1a9f9f9d1001",
+    "description": "Authenticated CRUD and analytics endpoints for the DBMS course project.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "apiKey",
+      "value": "dev-api-key"
+    },
+    {
+      "key": "demoCircuitId",
+      "value": "CIR-DEMO-0001"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CRUD",
+      "item": [
+        {
+          "name": "GET /circuits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/circuits?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["circuits"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /circuits",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"circuit_id\": \"{{demoCircuitId}}\",\n  \"circuit_name\": \"Demo Circuit\",\n  \"algorithm\": \"QFT\",\n  \"category\": \"education\",\n  \"backend\": \"ibm_kolkata\",\n  \"experiment_date\": \"2026-03-20\",\n  \"shots\": 1024,\n  \"circuit_fidelity\": 0.91,\n  \"success_rate\": 0.88\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/circuits",
+              "host": ["{{baseUrl}}"],
+              "path": ["circuits"]
+            }
+          }
+        },
+        {
+          "name": "PATCH /circuits/{id}",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"circuit_fidelity\": 0.93,\n  \"mitigation_technique\": \"TREX\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/circuits/{{demoCircuitId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["circuits", "{{demoCircuitId}}"]
+            }
+          }
+        },
+        {
+          "name": "DELETE /circuits/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/{{demoCircuitId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["circuits", "{{demoCircuitId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "GET /search",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q=QFT&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "q", "value": "QFT" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["stats"]
+            }
+          }
+        },
+        {
+          "name": "GET /stats/top-performers",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stats/top-performers?limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["stats", "top-performers"],
+              "query": [
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

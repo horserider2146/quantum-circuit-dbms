@@ -53,7 +53,8 @@ quantum_dbms/
 │   ├── main.py            ← FastAPI routes & all endpoints
 │   └── models.py          ← Pydantic request/response schemas
 ├── frontend/
-│   └── dashboard.py       ← Streamlit 6-page dashboard
+│   ├── dashboard.py       ← Original Streamlit dashboard (direct DB)
+│   └── dashboard_api.py   ← API-driven dashboard for course requirements
 ├── db/
 │   └── quantum_circuits.db  ← SQLite database (auto-generated)
 ├── docs/
@@ -154,13 +155,18 @@ Open **two separate terminals** inside the `quantum_dbms/` folder.
 
 ### Terminal 1 — Start the FastAPI backend
 ```powershell
+set API_KEY=dev-api-key
 python -m uvicorn backend.main:app --reload --port 8000
 ```
 
 ### Terminal 2 — Start the Streamlit dashboard
 ```powershell
-python -m streamlit run frontend/dashboard.py
+set API_KEY=dev-api-key
+set API_BASE_URL=http://localhost:8000
+python -m streamlit run frontend/dashboard_api.py
 ```
+
+`frontend/dashboard_api.py` is the API-first dashboard used for course requirement compliance (authenticated calls to FastAPI endpoints).
 
 ### Access the app
 | What | URL |
@@ -181,7 +187,9 @@ python -m streamlit run frontend/dashboard.py
 | GET | `/circuits/{id}` | Full detail across all 5 tables |
 | POST | `/circuits` | Create a new circuit |
 | PATCH | `/circuits/{id}` | Update specific fields |
-| DELETE | `/circuits/{id}` | Delete circuit + all related records |
+| DELETE | `/circuits/{id}` | Soft delete circuit (recoverable) |
+| POST | `/circuits/{id}/restore` | Restore a soft-deleted circuit |
+| DELETE | `/circuits/{id}/hard` | Permanent delete + related records |
 
 ### Search & Stats
 | Method | Endpoint | Description |
@@ -203,6 +211,24 @@ python -m streamlit run frontend/dashboard.py
 | PATCH | `/qubits/{id}` | Update qubit parameters |
 | PATCH | `/noise/{id}` | Update noise model values |
 
+### DBMS Enhancements
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/bulk/circuits` | Bulk insert/update with conflict handling |
+| POST | `/filters` | Save filter preset |
+| GET | `/filters` | List saved filters |
+| GET | `/filters/{filter_id}/circuits` | Run saved filter |
+| GET | `/audit/logs` | Audit trail events |
+| GET | `/quality/report` | Data-quality checks |
+| GET | `/benchmark/compare` | Algorithm benchmark comparison |
+
+### Quantum Extensions
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/quantum/noise-aware-score` | Composite quality ranking |
+| GET | `/quantum/mitigation/effectiveness` | Mitigation analytics |
+| POST | `/quantum/hardware/recommend` | Backend recommendation |
+
 ### Filter Parameters for `GET /circuits`
 | Parameter | Type | Example |
 |-----------|------|---------|
@@ -221,12 +247,11 @@ python -m streamlit run frontend/dashboard.py
 
 | Page | Features |
 |------|----------|
-| 🏠 Dashboard | KPI metrics, algorithm & backend bar charts, top-10 fidelity table |
-| 🔍 Search & Explore | Full-text search bar, 5 advanced filters, tabbed circuit detail view |
-| ➕ Add Circuit | Form-based INSERT with dropdown selectors and validation |
-| ✏️ Edit / Delete | PATCH fields or cascade-delete with typed confirmation |
-| 📊 Compare Circuits | Side-by-side comparison with auto verdict, diff highlighting, gate & noise charts |
-| 📖 Lessons & Guide | 6 step-by-step lessons + live SQL playground |
+| 🏠 Overview | KPI metrics, algorithm/backends charts, fidelity distribution, top performers |
+| 🔍 Search & Filter | Full-text search and advanced filtering via API |
+| ✏️ CRUD | Create, update, soft delete records through API forms |
+| 📊 Compare | Side-by-side circuit comparison with verdict and metric tables |
+| 🧪 Qubit Builder | Build, preview, save, list, view, and delete custom circuits |
 
 ---
 
@@ -237,8 +262,11 @@ import requests
 
 BASE = "http://localhost:8000"
 
+# Required auth header
+headers = {"X-API-Key": "dev-api-key"}
+
 # Search for Grover circuits
-r = requests.get(f"{BASE}/search", params={"q": "Grover"})
+r = requests.get(f"{BASE}/search", params={"q": "Grover"}, headers=headers)
 print(r.json()["count"], "results found")
 
 # Get high-fidelity real hardware circuits
@@ -246,12 +274,12 @@ r = requests.get(f"{BASE}/circuits", params={
     "min_fidelity": 0.95,
     "is_simulator": "False",
     "limit": 10
-})
+}, headers=headers)
 for c in r.json()["data"]:
     print(c["circuit_id"], c["backend"], c["circuit_fidelity"])
 
 # Get full detail for one circuit (all 5 tables)
-r = requests.get(f"{BASE}/circuits/CIR-00001")
+r = requests.get(f"{BASE}/circuits/CIR-00001", headers=headers)
 data = r.json()
 print(data["circuit"]["algorithm"])
 print(data["qubits"]["t1_relaxation_us"])
@@ -261,15 +289,19 @@ print(data["noise_model"]["total_circuit_error"])
 r = requests.patch(f"{BASE}/circuits/CIR-00001", json={
     "circuit_fidelity": 0.97,
     "mitigation_technique": "TREX"
-})
+}, headers=headers)
 print(r.json())
 
-# Delete a circuit (cascades to all related tables)
-r = requests.delete(f"{BASE}/circuits/CIR-99999")
+# Soft delete a circuit (recoverable)
+r = requests.delete(f"{BASE}/circuits/CIR-99999", headers=headers)
+print(r.json())
+
+# Restore soft-deleted circuit
+r = requests.post(f"{BASE}/circuits/CIR-99999/restore", headers=headers)
 print(r.json())
 
 # Get dashboard stats
-r = requests.get(f"{BASE}/stats")
+r = requests.get(f"{BASE}/stats", headers=headers)
 stats = r.json()
 print(f"Total: {stats['total_circuits']:,} circuits")
 print(f"Avg Fidelity: {stats['avg_fidelity']:.2%}")
@@ -296,18 +328,15 @@ git push -u origin main
 
 ---
 
-## 🎓 Lessons Covered
+## 🎓 Notes
 
-All 6 lessons are accessible inside the dashboard under **📖 Lessons & Guide**:
+The API-driven dashboard focuses on course requirements and includes direct operational workflows:
 
-| # | Lesson | Topics |
-|---|--------|--------|
-| 1 | What is a DBMS? | Tables, schemas, DBMS vs Excel |
-| 2 | Relational Design & SQL | JOINs, CRUD, normalization, indexing |
-| 3 | FastAPI Backend | REST endpoints, Pydantic validation, Swagger docs |
-| 4 | Streamlit Dashboard | Caching, forms, charts, multi-page apps |
-| 5 | Full Architecture | System diagram, file structure, quick start |
-| 6 | SQL Playground | Live queries, window functions, multi-table JOINs |
+- analytics overview
+- search and filter interactions
+- CRUD operations
+- side-by-side circuit comparison
+- custom circuit builder
 
 ---
 
